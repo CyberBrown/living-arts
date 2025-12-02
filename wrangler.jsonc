@@ -1,0 +1,44 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "living-arts",
+  "main": "./dist/_worker.js",
+  "compatibility_date": "2025-12-02",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "global_fetch_strictly_public"
+  ],
+  "assets": {
+    "binding": "ASSET",
+    "directory": "./dist"
+  },
+  "observability": {
+    "enabled": true
+  },
+
+  "workflows": [
+    {
+      "name": "video-production",
+      "binding": "VIDEO_WORKFLOW",
+      "class_name": "VideoProductionWorkflow"
+    }
+  ],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "living-arts-db",
+      "database_id": "c86cbd70-83a2-4950-bb6c-b2c406340dd5"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "STORAGE",
+      "bucket_name": "living-arts"
+    }
+  ],
+
+  "vars": {
+    "DE_API_URL": "https://api.distributedelectrons.com"
+  }
+}
