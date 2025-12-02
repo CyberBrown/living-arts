@@ -1,4 +1,4 @@
-import { component$, useSignal, $ } from "@builder.io/qwik";
+import { component$, useSignal } from "@builder.io/qwik";
 import {
   routeAction$,
   routeLoader$,
@@ -64,27 +64,6 @@ export default component$(() => {
   const projects = useProjects();
   const createAction = useCreateProject();
   const selectedDuration = useSignal("180");
-
-  const getStatusColor = $((status: string) => {
-    switch (status) {
-      case "complete":
-        return "#22c55e";
-      case "processing":
-      case "script_generated":
-      case "voiceover_generated":
-      case "timeline_assembled":
-        return "#eab308";
-      case "pending":
-        return "#6b7280";
-      default:
-        return "#ef4444";
-    }
-  });
-
-  const formatDuration = $((seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    return `${mins} min`;
-  });
 
   return (
     <>
