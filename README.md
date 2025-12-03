@@ -63,3 +63,43 @@ The production build will generate client and server modules by running both cli
 ```shell
 npm run build # or `yarn build`
 ```
+
+## Video Production Workers
+
+The `workers/` directory contains Cloudflare Workers that power the video production pipeline:
+
+- **video-workflow** - Orchestrates the video production process using Cloudflare Workflows
+- **audio-gen** - ElevenLabs text-to-speech generation
+- **stock-media** - Pexels stock video search
+- **render-service** - Shotstack video rendering
+
+### Required Secrets
+
+Before deploying the workers, set the required secrets:
+
+```shell
+# Video Workflow - Anthropic API for script generation
+cd workers/video-workflow
+wrangler secret put ANTHROPIC_API_KEY
+
+# Audio Gen - ElevenLabs API for voiceover
+cd workers/audio-gen
+wrangler secret put ELEVENLABS_API_KEY
+
+# Render Service - Shotstack API for video rendering
+cd workers/render-service
+wrangler secret put SHOTSTACK_API_KEY
+
+# Stock Media - Pexels API for stock footage
+cd workers/stock-media
+wrangler secret put PEXELS_API_KEY
+```
+
+### Deploying Workers
+
+```shell
+cd workers/video-workflow && bunx wrangler deploy
+cd workers/audio-gen && bunx wrangler deploy
+cd workers/stock-media && bunx wrangler deploy
+cd workers/render-service && bunx wrangler deploy
+```
