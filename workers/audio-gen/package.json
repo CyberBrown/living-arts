@@ -1,0 +1,29 @@
+{
+  "name": "audio-gen-worker",
+  "version": "1.0.0",
+  "description": "Audio generation worker for Distributed Electrons platform using ElevenLabs",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "test": "vitest",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [
+    "cloudflare",
+    "worker",
+    "audio",
+    "text-to-speech",
+    "elevenlabs",
+    "distributed-electrons"
+  ],
+  "author": "Distributed Electrons",
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.0.4",
+    "wrangler": "^4.52.1"
+  }
+}

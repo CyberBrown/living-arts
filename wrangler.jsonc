@@ -1,26 +1,11 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "living-arts",
-  "main": "dist/_worker.js",
   "compatibility_date": "2025-12-02",
   "compatibility_flags": [
     "nodejs_compat"
   ],
-  "assets": {
-    "directory": "dist",
-    "binding": "ASSETS"
-  },
-  "observability": {
-    "enabled": true
-  },
-
-  "workflows": [
-    {
-      "name": "video-production",
-      "binding": "VIDEO_WORKFLOW",
-      "class_name": "VideoProductionWorkflow"
-    }
-  ],
+  "pages_build_output_dir": "dist",
 
   "d1_databases": [
     {
@@ -38,6 +23,6 @@
   ],
 
   "vars": {
-    "DE_API_URL": "https://api.distributedelectrons.com"
+    "VIDEO_WORKFLOW_URL": "https://video-workflow.solamp.workers.dev"
   }
 }

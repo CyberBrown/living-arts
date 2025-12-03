@@ -1,0 +1,44 @@
+name = "render-service"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+account_id = "52b1c60ff2a24fb21c1ef9a429e63261"
+
+[vars]
+SHOTSTACK_ENV = "stage"
+CONFIG_SERVICE_URL = "https://api.distributedelectrons.com"
+SHOTSTACK_API_KEY = "uZdyBrEG7rXXCxs8diDzxUa5L6HBrjgUqpluBDlt"
+
+# R2 bucket for storing rendered videos
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "living-arts"
+
+# D1 database (if needed for tracking)
+[[d1_databases]]
+binding = "DB"
+database_name = "living-arts-db"
+database_id = "c86cbd70-83a2-4950-bb6c-b2c406340dd5"
+
+# KV namespace for storing provider API keys
+[[kv_namespaces]]
+binding = "PROVIDER_KEYS"
+id = "60eab140779649c09cb9aea7b3c8f533"
+
+# KV namespace for tracking render jobs
+# NOTE: This ID will be generated when you run: npx wrangler kv:namespace create RENDER_JOBS
+# Update this value after creating the namespace
+[[kv_namespaces]]
+binding = "RENDER_JOBS"
+id = "bbc8cb785a84431bb6c55914c67ccb1a"
+
+# Durable Objects for rate limiting (optional)
+# Uncomment if you have a rate-limiter worker
+# [durable_objects]
+# bindings = [
+#   { name = "RATE_LIMITER", class_name = "RateLimiter", script_name = "rate-limiter" }
+# ]
+
+# Observability
+[observability]
+enabled = true

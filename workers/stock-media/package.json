@@ -1,0 +1,18 @@
+{
+  "name": "stock-media-worker",
+  "version": "1.0.0",
+  "description": "Stock media worker for Pexels video integration",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "types": "wrangler types"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251202.0",
+    "typescript": "^5.4.5",
+    "wrangler": "^4.51.0"
+  }
+}

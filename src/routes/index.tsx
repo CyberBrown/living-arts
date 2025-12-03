@@ -5,13 +5,20 @@ import {
   Form,
   type DocumentHead,
 } from "@builder.io/qwik-city";
-import type { Env } from "../workflows/video-production";
+
+// Env type for Pages app
+interface Env {
+  DB: D1Database;
+  STORAGE: R2Bucket;
+  VIDEO_WORKFLOW_URL: string;
+}
 
 interface Project {
   id: string;
   prompt: string;
   status: string;
   duration: number;
+  workflow_id?: string;
   output_url: string | null;
   created_at: string;
 }
@@ -22,9 +29,35 @@ export const useProjects = routeLoader$<Project[]>(async ({ platform }) => {
     return [];
   }
   const result = await env.DB.prepare(
-    "SELECT id, prompt, status, duration, output_url, created_at FROM projects ORDER BY created_at DESC LIMIT 20"
+    "SELECT id, prompt, status, duration, output_url, created_at, workflow_id FROM projects ORDER BY created_at DESC LIMIT 20"
   ).all<Project>();
-  return result.results || [];
+
+  const projects = result.results || [];
+
+  // For projects that are still processing, fetch workflow status
+  const workflowUrl = env.VIDEO_WORKFLOW_URL || "https://video-workflow.solamp.workers.dev";
+  for (const project of projects) {
+    if (project.status === "processing" && project.workflow_id) {
+      try {
+        const statusResponse = await fetch(`${workflowUrl}/status/${project.id}`, {
+          headers: { "Content-Type": "application/json" },
+        });
+
+        if (statusResponse.ok) {
+          const workflowStatus = await statusResponse.json() as { status: string; data?: any };
+          // Update project status from workflow if available
+          if (workflowStatus.status) {
+            project.status = workflowStatus.status;
+          }
+        }
+      } catch (error) {
+        // Silently continue if workflow status fetch fails
+        console.error(`Failed to fetch status for project ${project.id}:`, error);
+      }
+    }
+  }
+
+  return projects;
 });
 
 export const useCreateProject = routeAction$(async (data, { platform }) => {
@@ -35,29 +68,59 @@ export const useCreateProject = routeAction$(async (data, { platform }) => {
 
   // Insert project into database
   await env.DB.prepare(
-    "INSERT INTO projects (id, prompt, status, duration) VALUES (?, ?, 'pending', ?)"
+    "INSERT INTO projects (id, prompt, status, duration) VALUES (?, ?, 'starting', ?)"
   ).bind(projectId, prompt, duration).run();
 
-  // Trigger the workflow
-  const instance = await env.VIDEO_WORKFLOW.create({
-    id: projectId,
-    params: {
+  try {
+    // Trigger the workflow Worker via fetch
+    const workflowUrl = env.VIDEO_WORKFLOW_URL || "https://video-workflow.solamp.workers.dev";
+    const workflowResponse = await fetch(`${workflowUrl}/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        prompt,
+        duration,
+      }),
+    });
+
+    if (!workflowResponse.ok) {
+      // Update status to failed
+      await env.DB.prepare(
+        "UPDATE projects SET status = 'failed' WHERE id = ?"
+      ).bind(projectId).run();
+
+      return {
+        success: false,
+        error: "Failed to start workflow",
+        projectId,
+      };
+    }
+
+    const workflowResult = await workflowResponse.json() as { workflowId: string };
+
+    // Update with workflow ID and status to processing
+    await env.DB.prepare(
+      "UPDATE projects SET workflow_id = ?, status = 'processing' WHERE id = ?"
+    ).bind(workflowResult.workflowId, projectId).run();
+
+    return {
+      success: true,
       projectId,
-      prompt,
-      duration,
-    },
-  });
+      workflowId: workflowResult.workflowId,
+    };
+  } catch (error) {
+    // Update status to failed on error
+    await env.DB.prepare(
+      "UPDATE projects SET status = 'failed' WHERE id = ?"
+    ).bind(projectId).run();
 
-  // Update status to processing
-  await env.DB.prepare(
-    "UPDATE projects SET status = 'processing' WHERE id = ?"
-  ).bind(projectId).run();
-
-  return {
-    success: true,
-    projectId,
-    instanceId: instance.id,
-  };
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+      projectId,
+    };
+  }
 });
 
 export default component$(() => {
@@ -198,6 +261,20 @@ export default component$(() => {
               }}
             >
               Project created! ID: {createAction.value.projectId}
+            </div>
+          )}
+
+          {createAction.value?.success === false && (
+            <div
+              style={{
+                marginTop: "1rem",
+                padding: "1rem",
+                background: "rgba(239, 68, 68, 0.2)",
+                borderRadius: "8px",
+                color: "#ef4444",
+              }}
+            >
+              Error: {createAction.value.error || "Failed to create project"}
             </div>
           )}
         </div>

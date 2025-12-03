@@ -15,6 +15,7 @@ export interface Env {
   STORAGE: R2Bucket;
   DE_API_URL: string;
   VIDEO_WORKFLOW: Workflow;
+  ANTHROPIC_API_KEY: string;
 }
 
 interface ScriptSection {
@@ -55,16 +56,82 @@ export class VideoProductionWorkflow extends WorkflowEntrypoint<
 
     // Step 1: Generate Script
     const script = await step.do("generate-script", async () => {
-      const response = await fetch(`${this.env.DE_API_URL}/text-gen/generate`, {
+      const sectionsNeeded = Math.ceil(duration / 10); // ~10 seconds per section
+      const wordsNeeded = Math.ceil(duration * 2.5); // ~150 words per minute = 2.5 words/sec
+
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": this.env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01"
+        },
         body: JSON.stringify({
-          prompt: `Create a video script for: ${prompt}. Target duration: ${duration} seconds.
-                   Return JSON with: { title, sections: [{ narration, duration, visualCues, keywords }] }`,
-          options: { max_tokens: 2000 },
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 4000,
+          messages: [{
+            role: "user",
+            content: `Create a video script for: "${prompt}"
+
+REQUIREMENTS:
+- Total duration: ${duration} seconds
+- Create exactly ${sectionsNeeded} sections (each ~10 seconds)
+- Total narration: approximately ${wordsNeeded} words
+- Each section's narration should be 20-30 words (takes ~10 seconds to speak)
+- Make it engaging, informative, and suitable for a professional video
+
+Return ONLY valid JSON (no markdown, no code blocks, no explanation) with this exact structure:
+{
+  "title": "Video Title",
+  "sections": [
+    {
+      "narration": "Full narration text for this section, approximately 20-30 words that takes about 10 seconds to speak aloud.",
+      "duration": 10,
+      "visualCues": "Description of what visuals should appear",
+      "keywords": ["keyword1", "keyword2", "keyword3"]
+    }
+  ]
+}
+
+Generate all ${sectionsNeeded} sections now:`
+          }]
         }),
       });
-      return response.json() as Promise<Script>;
+
+      const result = await response.json() as any;
+      const content = result.content?.[0]?.text || "";
+
+      console.log("Raw Claude response length:", content.length);
+
+      // Parse the JSON from Claude's response
+      let scriptData: Script;
+      try {
+        // Remove any markdown code blocks if present
+        const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        scriptData = JSON.parse(cleanContent);
+        console.log("Parsed script sections:", scriptData.sections?.length);
+      } catch (e) {
+        console.error("Script parse error:", e);
+        scriptData = {
+          title: prompt,
+          sections: [{
+            narration: content || prompt,
+            duration: duration,
+            visualCues: "General footage",
+            keywords: prompt.split(' ').slice(0, 5)
+          }]
+        };
+      }
+
+      // Save script to DB for debugging
+      await this.env.DB.prepare(
+        "UPDATE projects SET script_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+      ).bind(JSON.stringify(scriptData), projectId).run();
+
+      console.log("Script sections count:", scriptData.sections?.length);
+      console.log("Total narration words:", scriptData.sections?.map(s => s.narration).join(' ').split(' ').length);
+
+      return scriptData;
     });
 
     // Update status to script_generated
@@ -81,10 +148,16 @@ export class VideoProductionWorkflow extends WorkflowEntrypoint<
       retries: { limit: 3, delay: "10 seconds", backoff: "exponential" },
       timeout: "5 minutes"
     }, async () => {
+      // Defensive: ensure script.sections exists
+      const sections = script.sections || [{ narration: prompt }];
+      console.log("Voiceover using sections:", sections.length);
+
       // Combine all narration text from script sections
-      const fullNarration = script.sections
+      const fullNarration = sections
         .map((s: any) => s.narration)
         .join(" ");
+      console.log("Full narration length:", fullNarration.length, "words:", fullNarration.split(' ').length);
+      console.log("Full narration text:", fullNarration);
 
       const response = await fetch("https://audio-gen.solamp.workers.dev/generate", {
         method: "POST",
@@ -116,85 +189,91 @@ export class VideoProductionWorkflow extends WorkflowEntrypoint<
     });
 
     // Step 3: Gather Stock Media
-    const stockMedia = await step.do("gather-stock-media", {
-      retries: { limit: 2, delay: "5 seconds" },
-      timeout: "3 minutes"
-    }, async () => {
-      const clips: StockMediaItem[] = [];
+    const stockMedia = await step.do("gather-stock-media", async () => {
+      try {
+        // Collect keywords from all sections
+        const allKeywords = script.sections?.flatMap((s: any) => s.keywords || []) || [];
+        const query = allKeywords.length > 0 ? allKeywords.slice(0, 3).join(' ') : prompt.split(' ').slice(0, 3).join(' ');
 
-      for (let index = 0; index < script.sections.length; index++) {
-        const section = script.sections[index];
+        console.log("Searching stock media for:", query);
 
-        // Search for videos matching section keywords
-        const searchResponse = await fetch("https://stock-media.solamp.workers.dev/search", {
+        const response = await fetch("https://stock-media.solamp.workers.dev/search", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             instance_id: "living-arts",
-            query: section.keywords.join(" "),
-            options: { per_page: 3, orientation: "landscape" }
+            query: query,
+            options: { per_page: 5 }
           })
         });
 
-        if (!searchResponse.ok) continue;
+        const result = await response.json() as any;
 
-        const searchResult = await searchResponse.json() as any;
-        if (!searchResult.data?.videos?.length) continue;
-
-        // Download the best match
-        const bestVideo = searchResult.data.videos[0];
-        const downloadResponse = await fetch("https://stock-media.solamp.workers.dev/download", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            instance_id: "living-arts",
-            project_id: projectId,
-            video_id: bestVideo.id
-          })
-        });
-
-        if (downloadResponse.ok) {
-          const downloadResult = await downloadResponse.json() as any;
-          clips.push({
-            sectionIndex: index,
-            type: "stock",
-            url: downloadResult.data.url,
-            duration: downloadResult.data.duration
+        if (result.success && result.data?.videos) {
+          // Map to StockMediaItem format with HD video URLs
+          return result.data.videos.map((v: any) => {
+            const hdFile = v.video_files?.find((f: any) => f.quality === 'hd' && f.width >= 1280)
+              || v.video_files?.[0];
+            return {
+              id: String(v.id),
+              url: hdFile?.link || v.url,
+              duration: v.duration || 5,
+              provider: 'pexels'
+            };
           });
         }
-      }
 
-      return clips;
+        console.log("Stock media search failed or empty:", result);
+        return [];
+      } catch (error) {
+        console.error("Stock media error:", error);
+        return [];
+      }
     });
 
     // Step 4: Assemble Timeline
     const timeline = await step.do("assemble-timeline", async () => {
-      let currentTime = 0;
+      const sections = script.sections || [{
+        narration: script.title || "Video content",
+        duration: duration,
+        visualCues: "General footage",
+        keywords: []
+      }];
+
+      console.log("Assembling timeline with sections:", sections.length, "stock clips:", stockMedia.length);
+
+      // Build video clips from stock media
       const videoClips = [];
+      let currentTime = 0;
 
-      for (let index = 0; index < script.sections.length; index++) {
-        const section = script.sections[index];
-        const stockClip = stockMedia.find((c: any) => c.sectionIndex === index);
+      for (let index = 0; index < sections.length; index++) {
+        const section = sections[index];
+        // Use stock clips in order, cycling if we have fewer clips than sections
+        const stockClip = stockMedia.length > 0 ? stockMedia[index % stockMedia.length] : null;
 
-        videoClips.push({
-          id: `clip-${index}`,
-          type: "stock",
-          src: stockClip?.url || "",
-          start: currentTime,
-          duration: section.duration,
-          transition: { type: "fade", duration: 0.5 }
-        });
-
-        currentTime += section.duration;
+        if (stockClip?.url) {
+          videoClips.push({
+            id: `clip-${index}`,
+            type: "stock",
+            src: stockClip.url,
+            start: currentTime,
+            duration: section.duration || 10,
+            transition: { type: "fade", duration: 0.5 }
+          });
+        }
+        currentTime += section.duration || 10;
       }
 
+      console.log("Built video clips:", videoClips.length);
+
+      // Create timeline
       const timelineData = {
         projectId,
-        duration: voiceover.duration || script.sections.reduce((sum: number, s: any) => sum + s.duration, 0),
+        duration: duration,  // Use target duration, not voiceover.duration
         resolution: { width: 1920, height: 1080 },
         fps: 30,
         tracks: {
-          video: [{ id: "main-video", clips: videoClips }],
+          video: videoClips.length > 0 ? [{ id: "main-video", clips: videoClips }] : [],
           audio: [{
             id: "voiceover-track",
             clips: [{
@@ -202,7 +281,7 @@ export class VideoProductionWorkflow extends WorkflowEntrypoint<
               type: "voiceover",
               src: voiceover.url,
               start: 0,
-              duration: voiceover.duration,
+              duration: voiceover.duration || duration,
               volume: 1
             }]
           }],
