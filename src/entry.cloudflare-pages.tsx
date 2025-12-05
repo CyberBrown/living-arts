@@ -12,10 +12,10 @@ import qwikCityPlan from "@qwik-city-plan";
 import { manifest } from "@qwik-client-manifest";
 import render from "./entry.ssr";
 
-// Export the workflow class for Cloudflare Workers
-export { VideoProductionWorkflow } from "./workflows/video-production";
+// Workflow moved to separate Worker: video-workflow.solamp.workers.dev
 
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   interface QwikCityPlatform extends PlatformCloudflarePages {}
 }
 

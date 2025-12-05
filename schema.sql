@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS projects (
   user_id TEXT,
   prompt TEXT NOT NULL,
   status TEXT DEFAULT 'pending',
+  workflow_id TEXT,
   script_url TEXT,
   voiceover_url TEXT,
   timeline_url TEXT,

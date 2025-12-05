@@ -16,8 +16,7 @@ import {
 } from "@builder.io/qwik/server";
 import Root from "./root";
 
-// Export the workflow class for Cloudflare Workers
-export { VideoProductionWorkflow } from "./workflows/video-production";
+// Workflow moved to separate Worker: video-workflow.solamp.workers.dev
 
 export default function (opts: RenderToStreamOptions) {
   return renderToStream(<Root />, {

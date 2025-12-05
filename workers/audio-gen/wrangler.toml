@@ -1,0 +1,46 @@
+# Audio Generation Worker Configuration
+
+name = "audio-gen"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+account_id = "52b1c60ff2a24fb21c1ef9a429e63261"
+
+# Worker settings
+workers_dev = true
+
+# Environment Variables
+[vars]
+DEFAULT_VOICE_ID = "037vK30hDXR4IW8DJnGE"
+DEFAULT_MODEL_ID = "eleven_monolingual_v1"
+CONFIG_SERVICE_URL = "https://api.distributedelectrons.com"
+
+# R2 Bucket Binding
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "living-arts"
+
+# D1 Database Binding (optional, for future use)
+[[d1_databases]]
+binding = "DB"
+database_name = "multiagent_system"
+database_id = "7cff30a0-c974-4ede-b96a-c91dd2f0c870"
+
+# KV Namespace for Provider Keys (optional, for future use)
+[[kv_namespaces]]
+binding = "PROVIDER_KEYS"
+id = "60eab140779649c09cb9aea7b3c8f533"
+
+# Rate Limiter Durable Object (optional, for future use)
+[[durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiter"
+script_name = "rate-limiter"
+
+# Secrets (set with: wrangler secret put <NAME>)
+# - ELEVENLABS_API_KEY
+
+# Custom routes (configure after domain setup)
+# routes = [
+#   { pattern = "audio.distributedelectrons.com/*", zone_id = "YOUR_ZONE_ID" }
+# ]

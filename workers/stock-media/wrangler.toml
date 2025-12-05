@@ -1,0 +1,26 @@
+name = "stock-media"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+DEFAULT_PROVIDER = "pexels"
+CONFIG_SERVICE_URL = "https://api.distributedelectrons.com"
+PEXELS_API_KEY = "0YUqnYIeFO6yMiRij6r518zW4ttF05lETfIJYMQqHw2nsEYCq2XGn0km"
+
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "living-arts"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "living-arts-db"
+database_id = "c86cbd70-83a2-4950-bb6c-b2c406340dd5"
+
+[[kv_namespaces]]
+binding = "PROVIDER_KEYS"
+id = "60eab140779649c09cb9aea7b3c8f533"
+
+[[kv_namespaces]]
+binding = "SEARCH_CACHE"
+id = "26599b4b81dc430faaa88f70ae4eb1ae"
