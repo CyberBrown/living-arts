@@ -38,6 +38,9 @@
   ],
 
   "vars": {
-    "DE_API_URL": "https://api.distributedelectrons.com"
+    "TEXT_GEN_URL": "https://text-gen.solamp.workers.dev",
+    "AUDIO_GEN_URL": "https://audio-gen.solamp.workers.dev",
+    "STOCK_MEDIA_URL": "https://stock-media.solamp.workers.dev",
+    "RENDER_SERVICE_URL": "https://render-service.solamp.workers.dev"
   }
 }

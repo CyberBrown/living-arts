@@ -13,7 +13,10 @@ export interface VideoParams {
 export interface Env {
   DB: D1Database;
   STORAGE: R2Bucket;
-  DE_API_URL: string;
+  TEXT_GEN_URL: string;
+  AUDIO_GEN_URL: string;
+  STOCK_MEDIA_URL: string;
+  RENDER_SERVICE_URL: string;
   VIDEO_WORKFLOW: Workflow;
 }
 
@@ -34,21 +37,43 @@ interface Voiceover {
   duration: number;
 }
 
-interface StockMediaItem {
-  sectionIndex: number;
-  type: string;
+interface MediaItem {
+  id: string;
+  type: "video" | "image";
   url: string;
-  duration: number;
+  preview_url: string;
+  duration?: number;
+  width: number;
+  height: number;
 }
 
-interface Timeline {
-  script: Script;
-  voiceover: Voiceover;
-  media: StockMediaItem[];
+interface SectionMedia {
+  sectionIndex: number;
+  media: MediaItem[];
+}
+
+interface TimelineClip {
+  asset: {
+    type: "video" | "image" | "audio";
+    src: string;
+  };
+  start: number;
+  length: number;
+  fit?: "crop" | "cover" | "contain";
+}
+
+interface ShotstackTimeline {
+  soundtrack?: {
+    src: string;
+    effect?: string;
+    volume?: number;
+  };
+  tracks: Array<{ clips: TimelineClip[] }>;
 }
 
 interface RenderOutput {
   url: string;
+  render_id: string;
 }
 
 export class VideoProductionWorkflow extends WorkflowEntrypoint<
@@ -58,118 +83,308 @@ export class VideoProductionWorkflow extends WorkflowEntrypoint<
   async run(event: WorkflowEvent<VideoParams>, step: WorkflowStep) {
     const { projectId, prompt, duration } = event.payload;
 
-    // Step 1: Generate Script
-    const script = await step.do("generate-script", async () => {
-      const response = await fetch(`${this.env.DE_API_URL}/text-gen/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: `Create a video script for: ${prompt}. Target duration: ${duration} seconds.
-                   Return JSON with: { title, sections: [{ narration, duration, visualCues, keywords }] }`,
-          options: { max_tokens: 2000 },
-        }),
+    try {
+      // Step 1: Generate Script
+      const script = await step.do("generate-script", async () => {
+        const response = await fetch(
+          `${this.env.TEXT_GEN_URL}/generate`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              prompt: `You are a professional video scriptwriter. Create an educational video script.
+
+Topic: ${prompt}
+Target Duration: ${duration} seconds
+
+Return ONLY valid JSON (no markdown, no explanation) in this exact format:
+{
+  "title": "Video Title",
+  "sections": [
+    {
+      "narration": "The text to be spoken for this section",
+      "duration": 30,
+      "visualCues": "Description of what should be shown visually",
+      "keywords": ["keyword1", "keyword2", "keyword3"]
+    }
+  ]
+}
+
+Requirements:
+- Total duration of all sections should equal approximately ${duration} seconds
+- Each section should be 15-45 seconds
+- Keywords should be specific and visual (good for stock footage search)
+- Narration should be clear and educational`,
+              model: "anthropic:claude-sonnet-4-20250514",
+              options: { max_tokens: 2000, temperature: 0.7 },
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`Script generation failed: ${error}`);
+        }
+
+        const result = (await response.json()) as { success: boolean; text: string };
+
+        // Parse the JSON from the text response
+        try {
+          return JSON.parse(result.text) as Script;
+        } catch {
+          throw new Error("Failed to parse script JSON from AI response");
+        }
       });
-      return response.json() as Promise<Script>;
-    });
 
-    // Update status to script_generated
-    await step.do("update-script-status", async () => {
-      await this.env.DB.prepare(
-        "UPDATE projects SET status = 'script_generated', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-      )
-        .bind(projectId)
-        .run();
-    });
+      // Update status to script_generated
+      await step.do("update-script-status", async () => {
+        const scriptUrl = `projects/${projectId}/script.json`;
+        await this.env.STORAGE.put(scriptUrl, JSON.stringify(script, null, 2));
+        await this.env.DB.prepare(
+          "UPDATE projects SET status = 'script_generated', script_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        )
+          .bind(scriptUrl, projectId)
+          .run();
+      });
 
-    // Step 2: Generate Voiceover
-    const voiceover = await step.do("generate-voiceover", async () => {
-      // TODO: Call audio-gen worker
-      // const response = await fetch(`${this.env.DE_API_URL}/audio-gen/synthesize`, {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify({
-      //     text: script.sections.map(s => s.narration).join(" "),
-      //     voice: "default"
-      //   })
-      // });
-      // return response.json();
-      return { url: "", duration: 0 } as Voiceover;
-    });
+      // Step 2: Generate Voiceover
+      const voiceover = await step.do("generate-voiceover", async () => {
+        // Combine all narration text
+        const fullNarration = script.sections
+          .map((s) => s.narration)
+          .join("\n\n");
 
-    // Update status to voiceover_generated
-    await step.do("update-voiceover-status", async () => {
-      await this.env.DB.prepare(
-        "UPDATE projects SET status = 'voiceover_generated', voiceover_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-      )
-        .bind(voiceover.url, projectId)
-        .run();
-    });
+        const response = await fetch(
+          `${this.env.AUDIO_GEN_URL}/synthesize`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: fullNarration,
+              options: {
+                stability: 0.5,
+                similarity_boost: 0.75,
+              },
+            }),
+          }
+        );
 
-    // Step 3: Gather Stock Media
-    const stockMedia = await step.do("gather-stock-media", async () => {
-      // TODO: Call stock-media worker for each section
-      // const mediaPromises = script.sections.map(async (section, index) => {
-      //   const response = await fetch(`${this.env.DE_API_URL}/stock-media/search`, {
-      //     method: "POST",
-      //     headers: { "Content-Type": "application/json" },
-      //     body: JSON.stringify({
-      //       keywords: section.keywords,
-      //       duration: section.duration
-      //     })
-      //   });
-      //   return response.json();
-      // });
-      // return Promise.all(mediaPromises);
-      return [] as StockMediaItem[];
-    });
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`Voiceover generation failed: ${error}`);
+        }
 
-    // Step 4: Assemble Timeline
-    const timeline = await step.do("assemble-timeline", async () => {
-      // TODO: Create timeline from voiceover + stock media
-      // This would combine the voiceover timing with stock media clips
-      // to create a complete timeline for rendering
-      return {
-        script,
-        voiceover,
-        media: stockMedia,
-      } as Timeline;
-    });
+        const result = (await response.json()) as {
+          success: boolean;
+          audio_url: string;
+          duration_seconds: number;
+        };
 
-    // Update status to timeline_assembled
-    await step.do("update-timeline-status", async () => {
-      const timelineUrl = `projects/${projectId}/timeline.json`;
-      await this.env.STORAGE.put(
-        timelineUrl,
-        JSON.stringify(timeline, null, 2)
-      );
-      await this.env.DB.prepare(
-        "UPDATE projects SET status = 'timeline_assembled', timeline_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-      )
-        .bind(timelineUrl, projectId)
-        .run();
-    });
+        return {
+          url: result.audio_url,
+          duration: result.duration_seconds,
+        } as Voiceover;
+      });
 
-    // Step 5: Render Video
-    const output = await step.do("render-video", async () => {
-      // TODO: Call render-service worker (Shotstack)
-      // const response = await fetch(`${this.env.DE_API_URL}/render-service/render`, {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify({ timeline })
-      // });
-      // return response.json();
-      return { url: "" } as RenderOutput;
-    });
+      // Update status to voiceover_generated
+      await step.do("update-voiceover-status", async () => {
+        await this.env.DB.prepare(
+          "UPDATE projects SET status = 'voiceover_generated', voiceover_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        )
+          .bind(voiceover.url, projectId)
+          .run();
+      });
 
-    // Step 6: Update Project Status
-    await step.do("update-status", async () => {
-      await this.env.DB.prepare(
-        "UPDATE projects SET status = 'complete', output_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-      )
-        .bind(output.url, projectId)
-        .run();
-    });
+      // Step 3: Gather Stock Media for each section
+      const sectionMedia = await step.do("gather-stock-media", async () => {
+        const mediaResults: SectionMedia[] = [];
 
-    return { projectId, outputUrl: output.url };
+        for (let i = 0; i < script.sections.length; i++) {
+          const section = script.sections[i];
+
+          const response = await fetch(
+            `${this.env.STOCK_MEDIA_URL}/search/videos`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                keywords: section.keywords,
+                orientation: "landscape",
+                options: {
+                  per_page: 5,
+                  min_duration: Math.max(5, section.duration - 10),
+                  max_duration: section.duration + 30,
+                },
+              }),
+            }
+          );
+
+          if (!response.ok) {
+            console.error(
+              `Stock media search failed for section ${i}:`,
+              await response.text()
+            );
+            // Continue with empty media for this section
+            mediaResults.push({ sectionIndex: i, media: [] });
+            continue;
+          }
+
+          const result = (await response.json()) as {
+            success: boolean;
+            media: MediaItem[];
+          };
+
+          mediaResults.push({
+            sectionIndex: i,
+            media: result.media || [],
+          });
+        }
+
+        return mediaResults;
+      });
+
+      // Step 4: Assemble Timeline
+      const timeline = await step.do("assemble-timeline", async () => {
+        const clips: TimelineClip[] = [];
+        let currentTime = 0;
+
+        // Build video track from stock media
+        for (let i = 0; i < script.sections.length; i++) {
+          const section = script.sections[i];
+          const media = sectionMedia.find((m) => m.sectionIndex === i);
+
+          if (media && media.media.length > 0) {
+            // Use first matching video/image for this section
+            const item = media.media[0];
+            clips.push({
+              asset: {
+                type: item.type,
+                src: item.url,
+              },
+              start: currentTime,
+              length: section.duration,
+              fit: "cover",
+            });
+          }
+
+          currentTime += section.duration;
+        }
+
+        const shotstackTimeline: ShotstackTimeline = {
+          soundtrack: {
+            src: voiceover.url,
+            effect: "fadeOut",
+            volume: 1,
+          },
+          tracks: [{ clips }],
+        };
+
+        return shotstackTimeline;
+      });
+
+      // Update status to timeline_assembled
+      await step.do("update-timeline-status", async () => {
+        const timelineUrl = `projects/${projectId}/timeline.json`;
+        await this.env.STORAGE.put(timelineUrl, JSON.stringify(timeline, null, 2));
+        await this.env.DB.prepare(
+          "UPDATE projects SET status = 'timeline_assembled', timeline_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        )
+          .bind(timelineUrl, projectId)
+          .run();
+      });
+
+      // Step 5: Submit Render Job
+      const renderJob = await step.do("submit-render", async () => {
+        const response = await fetch(
+          `${this.env.RENDER_SERVICE_URL}/render`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              timeline,
+              output: {
+                format: "mp4",
+                resolution: "hd",
+                fps: 25,
+              },
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`Render submission failed: ${error}`);
+        }
+
+        const result = (await response.json()) as {
+          success: boolean;
+          render_id: string;
+        };
+
+        return { render_id: result.render_id };
+      });
+
+      // Step 6: Poll for render completion
+      const output = await step.do("wait-for-render", async () => {
+        const maxAttempts = 60; // 10 minutes with 10s intervals
+        let attempts = 0;
+
+        while (attempts < maxAttempts) {
+          const response = await fetch(
+            `${this.env.RENDER_SERVICE_URL}/render/${renderJob.render_id}`,
+            { method: "GET" }
+          );
+
+          if (!response.ok) {
+            throw new Error(`Render status check failed: ${response.status}`);
+          }
+
+          const status = (await response.json()) as {
+            status: string;
+            url?: string;
+            error?: string;
+          };
+
+          if (status.status === "done" && status.url) {
+            return { url: status.url, render_id: renderJob.render_id };
+          }
+
+          if (status.status === "failed") {
+            throw new Error(`Render failed: ${status.error || "Unknown error"}`);
+          }
+
+          // Wait 10 seconds before next check
+          await new Promise((resolve) => setTimeout(resolve, 10000));
+          attempts++;
+        }
+
+        throw new Error("Render timed out after 10 minutes");
+      });
+
+      // Step 7: Update Project Status to complete
+      await step.do("update-complete-status", async () => {
+        await this.env.DB.prepare(
+          "UPDATE projects SET status = 'complete', output_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        )
+          .bind(output.url, projectId)
+          .run();
+      });
+
+      return { projectId, outputUrl: output.url };
+    } catch (error) {
+      // Handle errors - update project status to failed
+      await step.do("handle-error", async () => {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        await this.env.DB.prepare(
+          "UPDATE projects SET status = 'error', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        )
+          .bind(projectId)
+          .run();
+        console.error(`Workflow failed for project ${projectId}:`, errorMessage);
+      });
+
+      throw error;
+    }
   }
 }

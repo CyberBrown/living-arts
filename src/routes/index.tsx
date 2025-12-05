@@ -1,4 +1,4 @@
-import { component$, useSignal } from "@builder.io/qwik";
+import { component$, useSignal, useVisibleTask$ } from "@builder.io/qwik";
 import {
   routeAction$,
   routeLoader$,
@@ -61,9 +61,45 @@ export const useCreateProject = routeAction$(async (data, { platform }) => {
 });
 
 export default component$(() => {
-  const projects = useProjects();
+  const initialProjects = useProjects();
   const createAction = useCreateProject();
-  const selectedDuration = useSignal("180");
+  const selectedDuration = useSignal("60");
+  const projects = useSignal<Project[]>(initialProjects.value);
+
+  // Poll for updates when there are processing projects
+  useVisibleTask$(({ track, cleanup }) => {
+    track(() => createAction.value);
+
+    const hasProcessing = () =>
+      projects.value.some(
+        (p) =>
+          p.status !== "complete" &&
+          p.status !== "error" &&
+          p.status !== "pending"
+      );
+
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/projects");
+        if (res.ok) {
+          const result = await res.json();
+          projects.value = result;
+        }
+      } catch (e) {
+        console.error("Failed to fetch projects:", e);
+      }
+    };
+
+    // Fetch after project creation with a small delay to ensure DB write completes
+    if (createAction.value?.success) {
+      setTimeout(poll, 500);
+    }
+
+    // Set up polling interval - always poll to catch new projects
+    const interval = setInterval(poll, 2000);
+
+    cleanup(() => clearInterval(interval));
+  });
 
   return (
     <>
@@ -140,10 +176,10 @@ export default component$(() => {
                 }}
               >
                 {[
+                  { value: "60", label: "1 min" },
+                  { value: "120", label: "2 min" },
                   { value: "180", label: "3 min" },
                   { value: "300", label: "5 min" },
-                  { value: "420", label: "7 min" },
-                  { value: "540", label: "9 min" },
                 ].map((option) => (
                   <button
                     key={option.value}
