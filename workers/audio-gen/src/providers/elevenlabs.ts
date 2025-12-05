@@ -21,17 +21,23 @@ export async function generateSpeech(
   apiKey: string
 ): Promise<AudioResult> {
   const voiceId = options.voice_id || 'Rachel';
-  const modelId = options.model_id || 'eleven_monolingual_v1';
-  const stability = options.stability ?? 0.5;
-  const similarityBoost = options.similarity_boost ?? 0.75;
+  // Upgraded to multilingual v2 for better quality
+  const modelId = options.model_id || 'eleven_multilingual_v2';
+  // Improved defaults for professional voiceovers
+  const stability = options.stability ?? 0.75;
+  const similarityBoost = options.similarity_boost ?? 0.85;
+  const style = options.style ?? 0.5;
+  const useSpeakerBoost = options.use_speaker_boost ?? true;
 
-  // Prepare request body
+  // Prepare request body with enhanced voice settings
   const requestBody: ElevenLabsTTSRequest = {
     text,
     model_id: modelId,
     voice_settings: {
       stability,
       similarity_boost: similarityBoost,
+      style,
+      use_speaker_boost: useSpeakerBoost,
     },
   };
 
@@ -72,6 +78,8 @@ export async function generateSpeech(
     metadata: {
       stability,
       similarity_boost: similarityBoost,
+      style,
+      use_speaker_boost: useSpeakerBoost,
       output_format: options.output_format || 'mp3_44100_128',
     },
   };

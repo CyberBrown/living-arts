@@ -15,6 +15,8 @@ export interface AudioGenerationOptions {
   model_id?: string;
   stability?: number;
   similarity_boost?: number;
+  style?: number;
+  use_speaker_boost?: boolean;
   output_format?: 'mp3_44100_128' | 'mp3_22050_32' | 'pcm_16000';
   [key: string]: any;
 }
@@ -101,6 +103,8 @@ export interface AudioResult {
 export interface ElevenLabsVoiceSettings {
   stability: number;
   similarity_boost: number;
+  style?: number;
+  use_speaker_boost?: boolean;
 }
 
 export interface ElevenLabsTTSRequest {
