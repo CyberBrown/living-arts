@@ -145,7 +145,7 @@ export default component$(() => {
       try {
         const res = await fetch("/api/projects");
         if (res.ok) {
-          const result = await res.json();
+          const result = await res.json() as Project[];
           projects.value = result;
         }
       } catch (e) {
@@ -377,41 +377,153 @@ export default component$(() => {
                     display: "flex",
                     alignItems: "center",
                     gap: "0.5rem",
+                    minWidth: "140px",
                   }}
                 >
-                  <span
-                    style={{
-                      display: "inline-block",
-                      width: "8px",
-                      height: "8px",
-                      borderRadius: "50%",
-                      background:
-                        project.status === "complete"
-                          ? "#22c55e"
-                          : project.status === "pending"
-                            ? "#6b7280"
-                            : project.status.includes("error")
-                              ? "#ef4444"
-                              : "#eab308",
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontSize: "0.875rem",
-                      textTransform: "capitalize",
-                    }}
-                  >
-                    {project.status.replace("_", " ")}
-                  </span>
+                  {/* Progress indicator for processing states */}
+                  {project.status !== "complete" &&
+                   project.status !== "pending" &&
+                   !project.status.includes("error") ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flex: 1 }}>
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "6px",
+                          background: "#374151",
+                          borderRadius: "3px",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <div
+                          style={{
+                            height: "100%",
+                            background: "linear-gradient(90deg, #18b6f6, #ac7ff4)",
+                            borderRadius: "3px",
+                            width: project.status === "starting" ? "10%" :
+                                   project.status === "processing" ? "20%" :
+                                   project.status === "script_generated" ? "40%" :
+                                   project.status === "voiceover_generated" ? "60%" :
+                                   project.status === "timeline_assembled" ? "80%" : "90%",
+                            transition: "width 0.3s ease",
+                          }}
+                        />
+                      </div>
+                      <span style={{ fontSize: "0.75rem", color: "#9ca3af", whiteSpace: "nowrap" }}>
+                        {project.status === "starting" ? "Starting..." :
+                         project.status === "processing" ? "Processing..." :
+                         project.status === "script_generated" ? "Script done" :
+                         project.status === "voiceover_generated" ? "Audio done" :
+                         project.status === "timeline_assembled" ? "Rendering..." :
+                         project.status.replace("_", " ")}
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          width: "8px",
+                          height: "8px",
+                          borderRadius: "50%",
+                          background:
+                            project.status === "complete"
+                              ? "#22c55e"
+                              : project.status === "pending"
+                                ? "#6b7280"
+                                : "#ef4444",
+                        }}
+                      />
+                      <span
+                        style={{
+                          fontSize: "0.875rem",
+                          textTransform: "capitalize",
+                        }}
+                      >
+                        {project.status.replace("_", " ")}
+                      </span>
+                    </>
+                  )}
                 </div>
                 {project.output_url && (
-                  <a
-                    href={project.output_url}
-                    target="_blank"
-                    class="button button-small"
+                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                    <button
+                      type="button"
+                      class="button button-small"
+                      onClick$={() => {
+                        const modal = document.getElementById(`video-modal-${project.id}`);
+                        if (modal) modal.style.display = "flex";
+                      }}
+                    >
+                      Play
+                    </button>
+                    <a
+                      href={project.output_url}
+                      target="_blank"
+                      class="button button-small button-dark"
+                    >
+                      Open
+                    </a>
+                  </div>
+                )}
+                {/* Video Modal */}
+                {project.output_url && (
+                  <div
+                    id={`video-modal-${project.id}`}
+                    onClick$={(e) => {
+                      if ((e.target as HTMLElement).id === `video-modal-${project.id}`) {
+                        (e.target as HTMLElement).style.display = "none";
+                      }
+                    }}
+                    style={{
+                      display: "none",
+                      position: "fixed",
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      background: "rgba(0, 0, 0, 0.9)",
+                      zIndex: 1000,
+                      justifyContent: "center",
+                      alignItems: "center",
+                      padding: "2rem",
+                    }}
                   >
-                    View
-                  </a>
+                    <div style={{ position: "relative", maxWidth: "900px", width: "100%" }}>
+                      <button
+                        type="button"
+                        onClick$={() => {
+                          const modal = document.getElementById(`video-modal-${project.id}`);
+                          if (modal) modal.style.display = "none";
+                        }}
+                        style={{
+                          position: "absolute",
+                          top: "-40px",
+                          right: "0",
+                          background: "transparent",
+                          border: "none",
+                          color: "white",
+                          fontSize: "1.5rem",
+                          cursor: "pointer",
+                        }}
+                      >
+                        ✕
+                      </button>
+                      <video
+                        src={project.output_url}
+                        controls
+                        autoplay
+                        style={{
+                          width: "100%",
+                          maxHeight: "80vh",
+                          borderRadius: "8px",
+                          background: "#000",
+                        }}
+                      />
+                      <p style={{ marginTop: "1rem", color: "#9ca3af", fontSize: "0.875rem" }}>
+                        {project.prompt}
+                      </p>
+                    </div>
+                  </div>
                 )}
               </div>
             ))}

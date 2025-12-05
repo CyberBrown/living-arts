@@ -54,8 +54,14 @@ interface SectionMedia {
 
 interface TimelineClip {
   asset: {
-    type: "video" | "image" | "audio";
-    src: string;
+    type: "video" | "image" | "audio" | "title";
+    src?: string;
+    text?: string;
+    style?: string;
+    color?: string;
+    size?: string;
+    background?: string;
+    position?: string;
   };
   start: number;
   length: number;
@@ -162,8 +168,11 @@ Requirements:
             body: JSON.stringify({
               text: fullNarration,
               options: {
-                stability: 0.5,
-                similarity_boost: 0.75,
+                model_id: "eleven_multilingual_v2",
+                stability: 0.75,
+                similarity_boost: 0.85,
+                style: 0.5,
+                use_speaker_boost: true,
               },
             }),
           }
@@ -245,8 +254,26 @@ Requirements:
 
       // Step 4: Assemble Timeline
       const timeline = await step.do("assemble-timeline", async () => {
-        const clips: TimelineClip[] = [];
+        const videoClips: TimelineClip[] = [];
+        const textOverlays: TimelineClip[] = [];
         let currentTime = 0;
+        const totalDuration = script.sections.reduce((sum, s) => sum + s.duration, 0);
+
+        // Add title card at the beginning (3 seconds)
+        const titleDuration = 3;
+        textOverlays.push({
+          asset: {
+            type: "title",
+            text: script.title,
+            style: "future",
+            color: "#ffffff",
+            size: "large",
+            background: "#000000",
+            position: "center",
+          },
+          start: 0,
+          length: titleDuration,
+        });
 
         // Build video track from stock media
         for (let i = 0; i < script.sections.length; i++) {
@@ -256,7 +283,7 @@ Requirements:
           if (media && media.media.length > 0) {
             // Use first matching video/image for this section
             const item = media.media[0];
-            clips.push({
+            videoClips.push({
               asset: {
                 type: item.type,
                 src: item.url,
@@ -267,8 +294,40 @@ Requirements:
             });
           }
 
+          // Add section header/lower third (2 seconds at start of each section after first)
+          if (i > 0 && section.visualCues) {
+            textOverlays.push({
+              asset: {
+                type: "title",
+                text: `Section ${i + 1}`,
+                style: "minimal",
+                color: "#ffffff",
+                size: "small",
+                position: "bottomLeft",
+              },
+              start: currentTime,
+              length: 2,
+            });
+          }
+
           currentTime += section.duration;
         }
+
+        // Add end card / call-to-action (3 seconds)
+        const endCardDuration = 3;
+        textOverlays.push({
+          asset: {
+            type: "title",
+            text: "Thanks for watching!",
+            style: "future",
+            color: "#ffffff",
+            size: "medium",
+            background: "#000000",
+            position: "center",
+          },
+          start: totalDuration - endCardDuration,
+          length: endCardDuration,
+        });
 
         const shotstackTimeline: ShotstackTimeline = {
           soundtrack: {
@@ -276,7 +335,10 @@ Requirements:
             effect: "fadeOut",
             volume: 1,
           },
-          tracks: [{ clips }],
+          tracks: [
+            { clips: textOverlays }, // Text overlays on top
+            { clips: videoClips },   // Video clips below
+          ],
         };
 
         return shotstackTimeline;

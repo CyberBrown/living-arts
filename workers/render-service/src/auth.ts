@@ -22,14 +22,27 @@ export async function authenticate(
     return { authenticated: true };
   }
 
-  // For now, allow all requests
-  // TODO: Implement proper authentication
-  // const apiKey = request.headers.get('x-api-key');
-  // if (!apiKey) {
-  //   return { authenticated: false, error: 'Missing API key' };
-  // }
+  // Validate API key from header
+  const apiKey = request.headers.get('x-api-key');
+  if (!apiKey) {
+    return { authenticated: false, error: 'Missing API key' };
+  }
 
-  return { authenticated: true };
+  // Validate API key against database
+  try {
+    const result = await env.DB.prepare(
+      'SELECT instance_id FROM api_keys WHERE key = ? AND enabled = 1'
+    ).bind(apiKey).first<{ instance_id: string }>();
+
+    if (!result) {
+      return { authenticated: false, error: 'Invalid API key' };
+    }
+
+    return { authenticated: true };
+  } catch (error) {
+    console.error('Auth error:', error);
+    return { authenticated: false, error: 'Authentication failed' };
+  }
 }
 
 /**
