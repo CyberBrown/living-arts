@@ -11,6 +11,7 @@ interface Env {
   DB: D1Database;
   STORAGE: R2Bucket;
   VIDEO_WORKFLOW_URL: string;
+  WORKER_API_KEY: string; // API key for authenticating with workers
 }
 
 interface Project {
@@ -39,8 +40,17 @@ export const useProjects = routeLoader$<Project[]>(async ({ platform }) => {
   for (const project of projects) {
     if (project.status === "processing" && project.workflow_id) {
       try {
+        const headers: HeadersInit = {
+          "Content-Type": "application/json",
+        };
+
+        // Add API key for worker authentication if configured
+        if (env.WORKER_API_KEY) {
+          headers["x-api-key"] = env.WORKER_API_KEY;
+        }
+
         const statusResponse = await fetch(`${workflowUrl}/status/${project.id}`, {
-          headers: { "Content-Type": "application/json" },
+          headers,
         });
 
         if (statusResponse.ok) {
@@ -74,9 +84,18 @@ export const useCreateProject = routeAction$(async (data, { platform }) => {
   try {
     // Trigger the workflow Worker via fetch
     const workflowUrl = env.VIDEO_WORKFLOW_URL || "https://video-workflow.solamp.workers.dev";
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+
+    // Add API key for worker authentication if configured
+    if (env.WORKER_API_KEY) {
+      headers["x-api-key"] = env.WORKER_API_KEY;
+    }
+
     const workflowResponse = await fetch(`${workflowUrl}/start`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
         projectId,
         prompt,

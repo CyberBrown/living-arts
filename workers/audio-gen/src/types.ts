@@ -67,13 +67,15 @@ export interface Env {
   RATE_LIMITER?: DurableObjectNamespace;
 
   // Environment variables
+  ENVIRONMENT: string;
   DEFAULT_VOICE_ID: string;
   DEFAULT_MODEL_ID: string;
   DEFAULT_INSTANCE_ID?: string;
   CONFIG_SERVICE_URL?: string;
 
   // API Keys (from secrets)
-  ELEVENLABS_API_KEY: string;
+  ELEVENLABS_API_KEY?: string;  // Production key (Cloudflare Secret)
+  ELEVENLABS_API_KEY_SANDBOX: string;  // Sandbox key (wrangler.toml)
 }
 
 export interface InstanceConfig {

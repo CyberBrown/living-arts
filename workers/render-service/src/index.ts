@@ -97,9 +97,14 @@ async function handleRender(request: Request, env: Env): Promise<Response> {
     const converter = new TimelineConverter();
     const shotstackEdit = converter.convert(body.timeline, body.options);
 
+    // Use production key if ENVIRONMENT=production, otherwise use sandbox
+    const apiKey = env.ENVIRONMENT === 'production' && env.SHOTSTACK_API_KEY
+      ? env.SHOTSTACK_API_KEY
+      : env.SHOTSTACK_API_KEY_SANDBOX;
+
     // Submit to Shotstack
     const shotstack = new ShotstackProvider(
-      env.SHOTSTACK_API_KEY,
+      apiKey,
       env.SHOTSTACK_ENV
     );
     const renderResponse = await shotstack.render(shotstackEdit);
@@ -154,9 +159,14 @@ async function handleStatus(renderId: string, env: Env): Promise<Response> {
       return errorResponse('Render job not found', 404);
     }
 
+    // Use production key if ENVIRONMENT=production, otherwise use sandbox
+    const apiKey = env.ENVIRONMENT === 'production' && env.SHOTSTACK_API_KEY
+      ? env.SHOTSTACK_API_KEY
+      : env.SHOTSTACK_API_KEY_SANDBOX;
+
     // Get status from Shotstack
     const shotstack = new ShotstackProvider(
-      env.SHOTSTACK_API_KEY,
+      apiKey,
       env.SHOTSTACK_ENV
     );
     const statusResponse = await shotstack.getStatus(renderId);
@@ -217,8 +227,13 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
     // If render is complete, download and store in R2
     if (webhook.status === 'done' && webhook.url) {
       try {
+        // Use production key if ENVIRONMENT=production, otherwise use sandbox
+        const apiKey = env.ENVIRONMENT === 'production' && env.SHOTSTACK_API_KEY
+          ? env.SHOTSTACK_API_KEY
+          : env.SHOTSTACK_API_KEY_SANDBOX;
+
         const shotstack = new ShotstackProvider(
-          env.SHOTSTACK_API_KEY,
+          apiKey,
           env.SHOTSTACK_ENV
         );
         const videoData = await shotstack.downloadVideo(webhook.url);

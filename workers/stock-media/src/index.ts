@@ -1,5 +1,5 @@
 import { PexelsProvider } from './providers/pexels';
-import { validateInstanceId, validateProjectAccess } from './auth';
+import { authenticate, validateInstanceId, validateProjectAccess } from './auth';
 import type {
   Env,
   SearchRequest,
@@ -39,7 +39,7 @@ function jsonResponse<T>(
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Headers': 'Content-Type, x-api-key',
     },
   });
 }
@@ -75,7 +75,10 @@ async function handleSearch(
       return jsonResponse(createResponse(true, cached as SearchResponse));
     }
 
-    const apiKey = env.PEXELS_API_KEY;
+    // Use production key if ENVIRONMENT=production, otherwise use sandbox
+    const apiKey = env.ENVIRONMENT === 'production' && env.PEXELS_API_KEY
+      ? env.PEXELS_API_KEY
+      : env.PEXELS_API_KEY_SANDBOX;
     const provider = new PexelsProvider(apiKey);
 
     const results = await provider.searchVideos(body.query, body.options);
@@ -142,7 +145,10 @@ async function handleDownload(
       );
     }
 
-    const apiKey = env.PEXELS_API_KEY;
+    // Use production key if ENVIRONMENT=production, otherwise use sandbox
+    const apiKey = env.ENVIRONMENT === 'production' && env.PEXELS_API_KEY
+      ? env.PEXELS_API_KEY
+      : env.PEXELS_API_KEY_SANDBOX;
     const provider = new PexelsProvider(apiKey);
 
     const video = await provider.getVideo(body.video_id);
@@ -192,7 +198,10 @@ async function handleBatchSearch(
       );
     }
 
-    const apiKey = env.PEXELS_API_KEY;
+    // Use production key if ENVIRONMENT=production, otherwise use sandbox
+    const apiKey = env.ENVIRONMENT === 'production' && env.PEXELS_API_KEY
+      ? env.PEXELS_API_KEY
+      : env.PEXELS_API_KEY_SANDBOX;
     const provider = new PexelsProvider(apiKey);
 
     const results: Record<string, { videos: SearchResponse['videos'] }> = {};
@@ -274,9 +283,18 @@ export default {
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Allow-Headers': 'Content-Type, x-api-key',
         },
       });
+    }
+
+    // Authenticate request
+    const authResult = await authenticate(request, env);
+    if (!authResult.authenticated) {
+      return jsonResponse(
+        createResponse(false, undefined, authResult.error || 'Unauthorized'),
+        401
+      );
     }
 
     if (url.pathname === '/health' && request.method === 'GET') {

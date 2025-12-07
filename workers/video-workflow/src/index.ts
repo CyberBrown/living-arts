@@ -4,6 +4,7 @@
  */
 
 import type { VideoParams } from "./video-production";
+import { authenticate, errorResponse } from "./auth";
 
 export { VideoProductionWorkflow } from "./video-production";
 
@@ -46,10 +47,16 @@ export default {
           headers: {
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Headers": "Content-Type, x-api-key",
             "Access-Control-Max-Age": "86400",
           },
         });
+      }
+
+      // Authenticate request
+      const authResult = await authenticate(request, env);
+      if (!authResult.authenticated) {
+        return errorResponse(authResult.error || 'Unauthorized', 401);
       }
 
       // Health check
@@ -258,6 +265,6 @@ function addCorsHeaders(response: Response): Response {
   const newResponse = new Response(response.body, response);
   newResponse.headers.set("Access-Control-Allow-Origin", "*");
   newResponse.headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  newResponse.headers.set("Access-Control-Allow-Headers", "Content-Type");
+  newResponse.headers.set("Access-Control-Allow-Headers", "Content-Type, x-api-key");
   return newResponse;
 }

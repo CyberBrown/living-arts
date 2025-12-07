@@ -15,7 +15,9 @@ export interface Env {
   STORAGE: R2Bucket;
   DE_API_URL: string;
   VIDEO_WORKFLOW: Workflow;
-  ANTHROPIC_API_KEY: string;
+  ENVIRONMENT: string;
+  ANTHROPIC_API_KEY?: string;  // Production key (Cloudflare Secret)
+  ANTHROPIC_API_KEY_SANDBOX: string;  // Sandbox key (wrangler.toml)
 }
 
 interface ScriptSection {
@@ -59,11 +61,16 @@ export class VideoProductionWorkflow extends WorkflowEntrypoint<
       const sectionsNeeded = Math.ceil(duration / 10); // ~10 seconds per section
       const wordsNeeded = Math.ceil(duration * 2.5); // ~150 words per minute = 2.5 words/sec
 
+      // Use production key if ENVIRONMENT=production, otherwise use sandbox
+      const apiKey = this.env.ENVIRONMENT === 'production' && this.env.ANTHROPIC_API_KEY
+        ? this.env.ANTHROPIC_API_KEY
+        : this.env.ANTHROPIC_API_KEY_SANDBOX;
+
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": this.env.ANTHROPIC_API_KEY,
+          "x-api-key": apiKey,
           "anthropic-version": "2023-06-01"
         },
         body: JSON.stringify({

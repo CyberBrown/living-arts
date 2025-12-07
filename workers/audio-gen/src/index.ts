@@ -4,6 +4,7 @@
  */
 
 import { generateSpeech, listVoices, getAudioContentType } from './providers/elevenlabs';
+import { authenticate, errorResponse as authErrorResponse } from './auth';
 import type {
   Env,
   GenerateRequest,
@@ -29,10 +30,16 @@ export default {
           headers: {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, X-API-Key, Authorization',
+            'Access-Control-Allow-Headers': 'Content-Type, X-API-Key, Authorization, x-api-key',
             'Access-Control-Max-Age': '86400',
           },
         });
+      }
+
+      // Authenticate request
+      const authResult = await authenticate(request, env);
+      if (!authResult.authenticated) {
+        return addCorsHeaders(authErrorResponse(authResult.error || 'Unauthorized', 401));
       }
 
       // Route handling
@@ -86,7 +93,7 @@ function addCorsHeaders(response: Response): Response {
   const newResponse = new Response(response.body, response);
   newResponse.headers.set('Access-Control-Allow-Origin', '*');
   newResponse.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  newResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type, X-API-Key, Authorization');
+  newResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type, X-API-Key, Authorization, x-api-key');
   return newResponse;
 }
 
@@ -136,7 +143,11 @@ async function handleGenerate(
     }
 
     // Get API key
-    const apiKey = instanceConfig.api_keys['elevenlabs'] || env.ELEVENLABS_API_KEY;
+    // Use production key if ENVIRONMENT=production, otherwise use sandbox
+    const defaultKey = env.ENVIRONMENT === 'production' && env.ELEVENLABS_API_KEY
+      ? env.ELEVENLABS_API_KEY
+      : env.ELEVENLABS_API_KEY_SANDBOX;
+    const apiKey = instanceConfig.api_keys['elevenlabs'] || defaultKey;
     if (!apiKey) {
       return createErrorResponse(
         'ElevenLabs API key not configured',
@@ -281,7 +292,10 @@ async function handleVoices(
 ): Promise<Response> {
   try {
     // Get API key
-    const apiKey = env.ELEVENLABS_API_KEY;
+    // Use production key if ENVIRONMENT=production, otherwise use sandbox
+    const apiKey = env.ENVIRONMENT === 'production' && env.ELEVENLABS_API_KEY
+      ? env.ELEVENLABS_API_KEY
+      : env.ELEVENLABS_API_KEY_SANDBOX;
     if (!apiKey) {
       return createErrorResponse(
         'ElevenLabs API key not configured',
@@ -433,11 +447,16 @@ async function getInstanceConfig(
 ): Promise<InstanceConfig | null> {
   // Mock configuration for MVP
   // In production, this would query the Config Service or D1 database
+  // Use production key if ENVIRONMENT=production, otherwise use sandbox
+  const defaultKey = env.ENVIRONMENT === 'production' && env.ELEVENLABS_API_KEY
+    ? env.ELEVENLABS_API_KEY
+    : env.ELEVENLABS_API_KEY_SANDBOX;
+
   return {
     instance_id: instanceId,
     org_id: 'solamp',
     api_keys: {
-      elevenlabs: env.ELEVENLABS_API_KEY || '',
+      elevenlabs: defaultKey || '',
     },
     rate_limits: {
       elevenlabs: {

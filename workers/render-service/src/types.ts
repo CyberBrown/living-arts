@@ -253,7 +253,9 @@ export interface RenderJob {
 
 // Worker Environment Bindings
 export interface Env {
-  SHOTSTACK_API_KEY: string;
+  ENVIRONMENT: string;
+  SHOTSTACK_API_KEY?: string;  // Production key (Cloudflare Secret)
+  SHOTSTACK_API_KEY_SANDBOX: string;  // Sandbox key (wrangler.toml)
   SHOTSTACK_ENV: string;
   CONFIG_SERVICE_URL: string;
 

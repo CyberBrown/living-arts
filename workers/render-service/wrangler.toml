@@ -7,7 +7,13 @@ account_id = "52b1c60ff2a24fb21c1ef9a429e63261"
 [vars]
 SHOTSTACK_ENV = "stage"
 CONFIG_SERVICE_URL = "https://api.distributedelectrons.com"
-SHOTSTACK_API_KEY = "uZdyBrEG7rXXCxs8diDzxUa5L6HBrjgUqpluBDlt"
+ENVIRONMENT = "sandbox"  # Options: "sandbox" or "production"
+
+# Sandbox API key for testing (safe to commit)
+SHOTSTACK_API_KEY_SANDBOX = "KraSrqll02W5PILoLmMXaStrrg4g1dLAE2IKFnPI"
+
+# Production secrets (set with: wrangler secret put <NAME>)
+# - SHOTSTACK_API_KEY  # Only used when ENVIRONMENT=production
 
 # R2 bucket for storing rendered videos
 [[r2_buckets]]

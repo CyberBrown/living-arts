@@ -14,6 +14,10 @@ workers_dev = true
 DEFAULT_VOICE_ID = "037vK30hDXR4IW8DJnGE"
 DEFAULT_MODEL_ID = "eleven_monolingual_v1"
 CONFIG_SERVICE_URL = "https://api.distributedelectrons.com"
+ENVIRONMENT = "sandbox"  # Options: "sandbox" or "production"
+
+# Sandbox API key for testing (safe to commit)
+ELEVENLABS_API_KEY_SANDBOX = "c45cd678b8cadd2b96d833e0f96413e8cc33b381feaf8cd050c99d6cca13a83c"
 
 # R2 Bucket Binding
 [[r2_buckets]]

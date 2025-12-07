@@ -3,7 +3,9 @@ export interface Env {
   DB: D1Database;
   PROVIDER_KEYS: KVNamespace;
   SEARCH_CACHE?: KVNamespace;
-  PEXELS_API_KEY: string;
+  ENVIRONMENT: string;
+  PEXELS_API_KEY?: string;  // Production key (Cloudflare Secret)
+  PEXELS_API_KEY_SANDBOX: string;  // Sandbox key (wrangler.toml)
   DEFAULT_PROVIDER: string;
   CONFIG_SERVICE_URL: string;
 }

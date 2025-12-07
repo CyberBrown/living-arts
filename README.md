@@ -73,6 +73,14 @@ The `workers/` directory contains Cloudflare Workers that power the video produc
 - **stock-media** - Pexels stock video search
 - **render-service** - Shotstack video rendering
 
+### Security & Authentication
+
+All worker endpoints now require API key authentication. See [SECURITY_DEPLOYMENT.md](./SECURITY_DEPLOYMENT.md) for:
+- Complete security setup guide
+- API key management
+- Authentication requirements
+- Deployment instructions
+
 ### Required Secrets
 
 Before deploying the workers, set the required secrets:

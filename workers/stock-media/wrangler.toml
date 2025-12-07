@@ -6,7 +6,13 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 DEFAULT_PROVIDER = "pexels"
 CONFIG_SERVICE_URL = "https://api.distributedelectrons.com"
-PEXELS_API_KEY = "0YUqnYIeFO6yMiRij6r518zW4ttF05lETfIJYMQqHw2nsEYCq2XGn0km"
+ENVIRONMENT = "sandbox"  # Options: "sandbox" or "production"
+
+# Sandbox API key for testing (safe to commit)
+PEXELS_API_KEY_SANDBOX = "0YUqnYIeFO6yMiRij6r518zW4ttF05lETfIJYMQqHw2nsEYCq2XGn0km"
+
+# Production secrets (set with: wrangler secret put <NAME>)
+# - PEXELS_API_KEY  # Only used when ENVIRONMENT=production
 
 [[r2_buckets]]
 binding = "R2_BUCKET"
