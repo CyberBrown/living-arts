@@ -14,14 +14,6 @@
     "enabled": true
   },
 
-  "workflows": [
-    {
-      "name": "video-production",
-      "binding": "VIDEO_WORKFLOW",
-      "class_name": "VideoProductionWorkflow"
-    }
-  ],
-
   "d1_databases": [
     {
       "binding": "DB",
@@ -38,6 +30,7 @@
   ],
 
   "vars": {
+    "VIDEO_WORKFLOW_URL": "https://video-workflow.solamp.workers.dev",
     "TEXT_GEN_URL": "https://text-gen.solamp.workers.dev",
     "AUDIO_GEN_URL": "https://audio-gen.solamp.workers.dev",
     "STOCK_MEDIA_URL": "https://stock-media.solamp.workers.dev",

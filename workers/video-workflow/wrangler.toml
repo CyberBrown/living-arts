@@ -29,7 +29,7 @@ bucket_name = "living-arts"
 # Environment Variables
 [vars]
 DE_API_URL = "https://api.distributedelectrons.com"
-ENVIRONMENT = "sandbox"  # Options: "sandbox" or "production"
+ENVIRONMENT = "production"  # Options: "sandbox" or "production"
 
 # Secrets (set with: wrangler secret put <NAME>)
 # - ANTHROPIC_API_KEY
