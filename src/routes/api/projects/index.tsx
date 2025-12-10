@@ -11,7 +11,7 @@ export const onGet: RequestHandler = async ({ platform, json }) => {
 
   try {
     const result = await env.DB.prepare(
-      "SELECT id, prompt, status, duration, output_url, created_at FROM projects ORDER BY created_at DESC LIMIT 20"
+      "SELECT id, prompt, status, duration, output_url, created_at, updated_at, error_message FROM projects ORDER BY created_at DESC LIMIT 20"
     ).all();
 
     json(200, result.results || []);

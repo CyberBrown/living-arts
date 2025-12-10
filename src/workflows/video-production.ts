@@ -77,6 +77,7 @@ interface ShotstackTimeline {
   tracks: Array<{ clips: TimelineClip[] }>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface RenderOutput {
   url: string;
   render_id: string;

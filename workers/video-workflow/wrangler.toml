@@ -30,6 +30,10 @@ bucket_name = "living-arts"
 [vars]
 DE_API_URL = "https://api.distributedelectrons.com"
 ENVIRONMENT = "sandbox"  # Options: "sandbox" or "production"
+AUDIO_GEN_URL = "https://audio-gen.solamp.workers.dev"
+STOCK_MEDIA_URL = "https://stock-media.solamp.workers.dev"
+RENDER_SERVICE_URL = "https://render-service.solamp.workers.dev"
+RENDER_SERVICE_API_KEY = "la_dev_DA77A783DF877D0A07D2EC815E6D8A3F"
 
 # Secrets (set with: wrangler secret put <NAME>)
 # - ANTHROPIC_API_KEY

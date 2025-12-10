@@ -18,6 +18,7 @@ export interface Env {
   ENVIRONMENT: string;
   ANTHROPIC_API_KEY?: string;  // Production key (Cloudflare Secret)
   ANTHROPIC_API_KEY_SANDBOX: string;  // Sandbox key (wrangler.toml)
+  RENDER_SERVICE_API_KEY: string;  // API key for render-service
 }
 
 interface ScriptSection {
@@ -56,6 +57,7 @@ export class VideoProductionWorkflow extends WorkflowEntrypoint<
   async run(event: WorkflowEvent<VideoParams>, step: WorkflowStep) {
     const { projectId, prompt, duration } = event.payload;
 
+    try {
     // Step 1: Generate Script
     const script = await step.do("generate-script", async () => {
       const sectionsNeeded = Math.ceil(duration / 10); // ~10 seconds per section
@@ -166,24 +168,25 @@ Generate all ${sectionsNeeded} sections now:`
       console.log("Full narration length:", fullNarration.length, "words:", fullNarration.split(' ').length);
       console.log("Full narration text:", fullNarration);
 
-      const response = await fetch("https://audio-gen.solamp.workers.dev/generate", {
+      const response = await fetch("https://audio-gen.solamp.workers.dev/synthesize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          instance_id: "living-arts",
-          project_id: projectId,
           text: fullNarration,
-          options: { voice_id: "037vK30hDXR4IW8DJnGE" },
-          save_to_r2: true
+          options: {
+            voice_id: "21m00Tcm4TlvDq8ikWAM",
+            model_id: "eleven_multilingual_v2"
+          }
         })
       });
 
       if (!response.ok) {
-        throw new Error(`Voiceover generation failed: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`Voiceover generation failed: ${response.status} - ${errorText}`);
       }
 
       const result = await response.json() as any;
-      return { url: result.data.url, duration: result.data.duration_seconds } as Voiceover;
+      return { url: result.audio_url, duration: result.duration_seconds } as Voiceover;
     });
 
     // Update status to voiceover_generated
@@ -326,7 +329,10 @@ Generate all ${sectionsNeeded} sections now:`
       // Submit render job
       const renderResponse = await fetch("https://render-service.solamp.workers.dev/render", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": this.env.RENDER_SERVICE_API_KEY
+        },
         body: JSON.stringify({
           instance_id: "living-arts",
           project_id: projectId,
@@ -352,7 +358,10 @@ Generate all ${sectionsNeeded} sections now:`
         await new Promise(r => setTimeout(r, 5000)); // Wait 5 seconds
 
         const statusResponse = await fetch(
-          `https://render-service.solamp.workers.dev/status/${renderId}`
+          `https://render-service.solamp.workers.dev/status/${renderId}`,
+          {
+            headers: { "x-api-key": this.env.RENDER_SERVICE_API_KEY }
+          }
         );
 
         if (!statusResponse.ok) {
@@ -379,12 +388,28 @@ Generate all ${sectionsNeeded} sections now:`
     // Step 6: Update Project Status
     await step.do("update-status", async () => {
       await this.env.DB.prepare(
-        "UPDATE projects SET status = 'complete', output_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        "UPDATE projects SET status = 'complete', output_url = ?, error_message = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
       )
         .bind(output.url, projectId)
         .run();
     });
 
     return { projectId, outputUrl: output.url };
+
+    } catch (error) {
+      // Handle workflow errors - update project status to error
+      const errorMessage = error instanceof Error ? error.message : "Unknown workflow error";
+      console.error(`Workflow failed for project ${projectId}:`, errorMessage);
+
+      await step.do("handle-error", async () => {
+        await this.env.DB.prepare(
+          "UPDATE projects SET status = 'error', error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        )
+          .bind(errorMessage.substring(0, 500), projectId)
+          .run();
+      });
+
+      throw error; // Re-throw so workflow is marked as failed
+    }
   }
 }
