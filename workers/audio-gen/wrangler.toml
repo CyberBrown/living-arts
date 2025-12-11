@@ -24,11 +24,11 @@ ELEVENLABS_API_KEY_SANDBOX = "c45cd678b8cadd2b96d833e0f96413e8cc33b381feaf8cd050
 binding = "R2_BUCKET"
 bucket_name = "living-arts"
 
-# D1 Database Binding (optional, for future use)
+# D1 Database Binding
 [[d1_databases]]
 binding = "DB"
-database_name = "multiagent_system"
-database_id = "7cff30a0-c974-4ede-b96a-c91dd2f0c870"
+database_name = "living-arts-db"
+database_id = "c86cbd70-83a2-4950-bb6c-b2c406340dd5"
 
 # KV Namespace for Provider Keys (optional, for future use)
 [[kv_namespaces]]

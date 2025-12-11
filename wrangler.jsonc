@@ -14,11 +14,10 @@
     "enabled": true
   },
 
-  "workflows": [
+  "services": [
     {
-      "name": "video-production",
-      "binding": "VIDEO_WORKFLOW",
-      "class_name": "VideoProductionWorkflow"
+      "binding": "VIDEO_WORKFLOW_SERVICE",
+      "service": "video-workflow"
     }
   ],
 
@@ -41,6 +40,8 @@
     "TEXT_GEN_URL": "https://text-gen.solamp.workers.dev",
     "AUDIO_GEN_URL": "https://audio-gen.solamp.workers.dev",
     "STOCK_MEDIA_URL": "https://stock-media.solamp.workers.dev",
-    "RENDER_SERVICE_URL": "https://render-service.solamp.workers.dev"
+    "RENDER_SERVICE_URL": "https://render-service.solamp.workers.dev",
+    "VIDEO_WORKFLOW_URL": "https://video-workflow.solamp.workers.dev",
+    "WORKER_API_KEY": "la_dev_DA77A783DF877D0A07D2EC815E6D8A3F"
   }
 }

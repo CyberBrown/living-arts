@@ -14,6 +14,7 @@ interface Env {
   STORAGE: R2Bucket;
   VIDEO_WORKFLOW_URL: string;
   WORKER_API_KEY: string; // API key for authenticating with workers
+  VIDEO_WORKFLOW_SERVICE?: Fetcher; // Service binding for direct worker-to-worker calls
 }
 
 interface Project {
@@ -96,7 +97,6 @@ export const useProjects = routeLoader$<Project[]>(async ({ platform }) => {
   const projects = result.results || [];
 
   // For projects that are still processing, fetch workflow status
-  const workflowUrl = env.VIDEO_WORKFLOW_URL || "https://video-workflow.solamp.workers.dev";
   for (const project of projects) {
     if (project.status === "processing" && project.workflow_id) {
       try {
@@ -109,9 +109,13 @@ export const useProjects = routeLoader$<Project[]>(async ({ platform }) => {
           headers["x-api-key"] = env.WORKER_API_KEY;
         }
 
-        const statusResponse = await fetch(`${workflowUrl}/status/${project.id}`, {
-          headers,
-        });
+        let statusResponse: Response;
+        if (env.VIDEO_WORKFLOW_SERVICE) {
+          statusResponse = await env.VIDEO_WORKFLOW_SERVICE.fetch(`https://video-workflow/status/${project.id}`, { headers });
+        } else {
+          const workflowUrl = env.VIDEO_WORKFLOW_URL || "https://video-workflow.solamp.workers.dev";
+          statusResponse = await fetch(`${workflowUrl}/status/${project.id}`, { headers });
+        }
 
         if (statusResponse.ok) {
           const workflowStatus = await statusResponse.json() as { status: string; data?: any };
@@ -139,7 +143,8 @@ const createProjectSchema = z.object({
 export const useCreateProject = routeAction$(async (data, { platform }) => {
   const env = platform.env as Env;
   const projectId = crypto.randomUUID();
-  const prompt = data.prompt as string;
+  // Sanitize prompt: remove carriage returns and trim whitespace
+  const prompt = (data.prompt as string).replace(/\r\n/g, ' ').replace(/\r/g, ' ').replace(/\n/g, ' ').trim();
   const duration = parseInt(data.duration as string, 10);
 
   // Insert project into database
@@ -148,32 +153,53 @@ export const useCreateProject = routeAction$(async (data, { platform }) => {
   ).bind(projectId, prompt, duration).run();
 
   try {
-    // Trigger the workflow Worker via fetch
-    const workflowUrl = env.VIDEO_WORKFLOW_URL || "https://video-workflow.solamp.workers.dev";
+    // Use service binding if available (avoids worker-to-worker fetch issues)
+    // Otherwise fall back to HTTP fetch
     const headers: HeadersInit = {
       "Content-Type": "application/json",
     };
 
-    // Add API key for worker authentication if configured
+    // Add API key for worker authentication
     if (env.WORKER_API_KEY) {
       headers["x-api-key"] = env.WORKER_API_KEY;
     }
 
-    const workflowResponse = await fetch(`${workflowUrl}/start`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        projectId,
-        prompt,
-        duration,
-      }),
-    });
+    let workflowResponse: Response;
+
+    if (env.VIDEO_WORKFLOW_SERVICE) {
+      // Use service binding - direct worker-to-worker call
+      workflowResponse = await env.VIDEO_WORKFLOW_SERVICE.fetch("https://video-workflow/start", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          projectId,
+          prompt,
+          duration,
+        }),
+      });
+    } else {
+      // Fall back to HTTP fetch
+      const workflowUrl = env.VIDEO_WORKFLOW_URL || "https://video-workflow.solamp.workers.dev";
+      workflowResponse = await fetch(`${workflowUrl}/start`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          projectId,
+          prompt,
+          duration,
+        }),
+      });
+    }
 
     if (!workflowResponse.ok) {
-      // Update status to failed
+      // Get error details from response
+      const errorText = await workflowResponse.text();
+      console.error("Workflow start failed:", workflowResponse.status, errorText);
+
+      // Update status to failed with error message
       await env.DB.prepare(
-        "UPDATE projects SET status = 'failed' WHERE id = ?"
-      ).bind(projectId).run();
+        "UPDATE projects SET status = 'failed', error_message = ? WHERE id = ?"
+      ).bind(`Workflow error: ${errorText.substring(0, 200)}`, projectId).run();
 
       return {
         success: false,
@@ -253,7 +279,6 @@ export const useRetryProject = routeAction$(async (data, { platform }) => {
     ).bind(projectId).run();
 
     // Trigger the workflow again
-    const workflowUrl = env.VIDEO_WORKFLOW_URL || "https://video-workflow.solamp.workers.dev";
     const headers: HeadersInit = {
       "Content-Type": "application/json",
     };
@@ -262,15 +287,32 @@ export const useRetryProject = routeAction$(async (data, { platform }) => {
       headers["x-api-key"] = env.WORKER_API_KEY;
     }
 
-    const workflowResponse = await fetch(`${workflowUrl}/start`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        projectId: project.id,
-        prompt: project.prompt,
-        duration: project.duration,
-      }),
-    });
+    // Sanitize prompt for retry
+    const sanitizedPrompt = project.prompt.replace(/\r\n/g, ' ').replace(/\r/g, ' ').replace(/\n/g, ' ').trim();
+
+    let workflowResponse: Response;
+    if (env.VIDEO_WORKFLOW_SERVICE) {
+      workflowResponse = await env.VIDEO_WORKFLOW_SERVICE.fetch("https://video-workflow/start", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          projectId: project.id,
+          prompt: sanitizedPrompt,
+          duration: project.duration,
+        }),
+      });
+    } else {
+      const workflowUrl = env.VIDEO_WORKFLOW_URL || "https://video-workflow.solamp.workers.dev";
+      workflowResponse = await fetch(`${workflowUrl}/start`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          projectId: project.id,
+          prompt: sanitizedPrompt,
+          duration: project.duration,
+        }),
+      });
+    }
 
     if (!workflowResponse.ok) {
       await env.DB.prepare(

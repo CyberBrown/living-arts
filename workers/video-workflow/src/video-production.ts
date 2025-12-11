@@ -19,6 +19,8 @@ export interface Env {
   ANTHROPIC_API_KEY?: string;  // Production key (Cloudflare Secret)
   ANTHROPIC_API_KEY_SANDBOX: string;  // Sandbox key (wrangler.toml)
   RENDER_SERVICE_API_KEY: string;  // API key for render-service
+  AUDIO_GEN_API_KEY: string;  // API key for audio-gen service
+  STOCK_MEDIA_API_KEY: string;  // API key for stock-media service
 }
 
 interface ScriptSection {
@@ -107,10 +109,17 @@ Generate all ${sectionsNeeded} sections now:`
         }),
       });
 
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Claude API error:", response.status, errorText);
+        throw new Error(`Claude API failed: ${response.status} - ${errorText}`);
+      }
+
       const result = await response.json() as any;
       const content = result.content?.[0]?.text || "";
 
       console.log("Raw Claude response length:", content.length);
+      console.log("Claude response preview:", content.substring(0, 200));
 
       // Parse the JSON from Claude's response
       let scriptData: Script;
@@ -119,17 +128,25 @@ Generate all ${sectionsNeeded} sections now:`
         const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         scriptData = JSON.parse(cleanContent);
         console.log("Parsed script sections:", scriptData.sections?.length);
+
+        // Validate that we got proper sections
+        if (!scriptData.sections || scriptData.sections.length === 0) {
+          throw new Error("Script missing sections - Claude returned incomplete response");
+        }
+
+        // Validate each section has required fields
+        for (let i = 0; i < scriptData.sections.length; i++) {
+          const section = scriptData.sections[i];
+          if (!section.narration || section.narration.trim().length < 10) {
+            throw new Error(`Section ${i + 1} has invalid or missing narration`);
+          }
+        }
       } catch (e) {
-        console.error("Script parse error:", e);
-        scriptData = {
-          title: prompt,
-          sections: [{
-            narration: content || prompt,
-            duration: duration,
-            visualCues: "General footage",
-            keywords: prompt.split(' ').slice(0, 5)
-          }]
-        };
+        // Don't silently fall back - propagate the error so it's visible
+        const errorMsg = e instanceof Error ? e.message : "Unknown parse error";
+        console.error("Script parse error:", errorMsg);
+        console.error("Raw content that failed to parse:", content.substring(0, 500));
+        throw new Error(`Failed to parse script from Claude: ${errorMsg}`);
       }
 
       // Save script to DB for debugging
@@ -168,15 +185,18 @@ Generate all ${sectionsNeeded} sections now:`
       console.log("Full narration length:", fullNarration.length, "words:", fullNarration.split(' ').length);
       console.log("Full narration text:", fullNarration);
 
-      const response = await fetch("https://audio-gen.solamp.workers.dev/synthesize", {
+      const response = await fetch("https://audio-gen.solamp.workers.dev/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": this.env.AUDIO_GEN_API_KEY
+        },
         body: JSON.stringify({
+          instance_id: "living-arts",
+          project_id: projectId,
           text: fullNarration,
-          options: {
-            voice_id: "21m00Tcm4TlvDq8ikWAM",
-            model_id: "eleven_multilingual_v2"
-          }
+          options: { voice_id: "21m00Tcm4TlvDq8ikWAM" },
+          save_to_r2: true
         })
       });
 
@@ -186,7 +206,7 @@ Generate all ${sectionsNeeded} sections now:`
       }
 
       const result = await response.json() as any;
-      return { url: result.audio_url, duration: result.duration_seconds } as Voiceover;
+      return { url: result.data.url, duration: result.data.duration_seconds } as Voiceover;
     });
 
     // Update status to voiceover_generated
@@ -209,7 +229,10 @@ Generate all ${sectionsNeeded} sections now:`
 
         const response = await fetch("https://stock-media.solamp.workers.dev/search", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": this.env.STOCK_MEDIA_API_KEY
+          },
           body: JSON.stringify({
             instance_id: "living-arts",
             query: query,
@@ -221,7 +244,7 @@ Generate all ${sectionsNeeded} sections now:`
 
         if (result.success && result.data?.videos) {
           // Map to StockMediaItem format with HD video URLs
-          return result.data.videos.map((v: any) => {
+          const videos = result.data.videos.map((v: any) => {
             const hdFile = v.video_files?.find((f: any) => f.quality === 'hd' && f.width >= 1280)
               || v.video_files?.[0];
             return {
@@ -231,12 +254,19 @@ Generate all ${sectionsNeeded} sections now:`
               provider: 'pexels'
             };
           });
+
+          if (videos.length === 0) {
+            console.warn("Stock media search returned no videos for query:", query);
+          }
+          return videos;
         }
 
-        console.log("Stock media search failed or empty:", result);
+        // Log but continue - stock media is optional
+        console.warn("Stock media search failed or empty:", JSON.stringify(result).substring(0, 200));
         return [];
       } catch (error) {
-        console.error("Stock media error:", error);
+        // Log but continue - stock media is optional
+        console.warn("Stock media error (non-fatal):", error instanceof Error ? error.message : error);
         return [];
       }
     });

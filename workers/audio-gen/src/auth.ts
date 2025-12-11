@@ -19,6 +19,11 @@ export async function authenticate(
     return { authenticated: true };
   }
 
+  // Allow audio file serving without authentication (needed for Shotstack to download)
+  if (url.pathname.startsWith('/audio/')) {
+    return { authenticated: true };
+  }
+
   // Validate API key from header
   const apiKey = request.headers.get('x-api-key');
   if (!apiKey) {
